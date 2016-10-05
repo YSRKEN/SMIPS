@@ -1,0 +1,24 @@
+2 3
+5 4
+1.5 3 < 13.5
+3 1 < 10
+1 2 > 7
+1 1
+
+maximize
+  + 5 x1 + 4 x2
+subject to
+  + 1.5 x1 + 3 x2 <= 13.5
+  + 3 x1 + 1 x2 <= 10
+  + 1 x1 + 2 x2 >= 7
+general
+  x1 x2
+
+解答→
+objective value:                                   22
+x1                                                  2 	(obj:5)
+x2                                                  3 	(obj:4)
+解答(緩和問題)→
+objective value:                                 24.6
+x1                                                2.2 	(obj:5)
+x2                                                3.4 	(obj:4)
