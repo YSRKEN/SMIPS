@@ -1,7 +1,7 @@
 ﻿/**
 * Smallest Mixed Integer Problem Solver
 * Creator: YSR
-*    Date: 2016/09/14
+*    Date: 2016/10/08
 */
 
 #include<algorithm>
@@ -42,7 +42,7 @@ double round_to_zero(const double x) {
 
 //! 整数に十分近い場合にtrue
 bool is_int(const double x) {
-	return (x - floor(x) < EPS);
+	return (abs(x - round(x)) < EPS);
 }
 
 //! 実数を文字列に変換する(ダンプ用)
@@ -111,14 +111,12 @@ struct SimplexModule {
 		this->e_cnt = e_cnt;
 		this->s_cnt = s_cnt;
 		this->a_cnt = a_cnt;
-		//cout << "v:" << this->v_cnt << " e:" << this->e_cnt << " s:" << this->s_cnt << " a:" << this->a_cnt << "\n";
 	}
 	//! 最適化(a_cntの値で変化？)
 	bool solve() noexcept {
 		size_t count = 1;
 		size_t simplex_column = v_cnt + s_cnt + a_cnt;
 		while (true) {
-			//dump();
 			//! 列の選択(Bland の規則)
 			size_t column_idx = 0;
 			for (int j = 1; j <= simplex_column && column_idx == 0; ++j) {
@@ -139,7 +137,6 @@ struct SimplexModule {
 					//! 非正とみなされる場合は飛ばす
 					if (table[i][column_idx] < EPS) continue;
 					double temp = table[i][0] / table[i][column_idx];
-					//cout << i << " " << temp << "|" << row_index << " " << min << " " << k << endl;
 					if (row_index == 0
 						|| temp < min
 						|| temp == min && v_idx[i] < k) {
@@ -148,26 +145,22 @@ struct SimplexModule {
 						k = v_idx[i];
 					}
 				}
-				//cout << "|" << row_index << " " << min << " " << k << endl;
 				if (row_index == 0) {
 					//! 解なし
 					return false;
 				}
 				else {
-					//cout << "column:" << (column_idx) << " row:" << (row_index) << endl;
 					row_index = row_index - 1;	//! 1以上なので必ず1を引ける
 												//! 単体表の変形処理
-				//	if(a_cnt == 0) dump();
-				//	{
+					{
 						//! まずは選択行を掃き出す
 						double temp = table[row_index][column_idx];
 						v_idx[row_index] = column_idx - 1;
 						for (size_t j = 0; j <= simplex_column; ++j) {
 							table[row_index][j] /= temp;
 						}
-				//	}
-				//	if (a_cnt == 0) dump();
-				//	{
+					}
+					{
 						//! 次に他の行を掃き出す
 						for (size_t i = 0; i <= e_cnt; ++i) {
 							if (i == row_index) continue;
@@ -176,8 +169,7 @@ struct SimplexModule {
 								table[i][j] -= temp * table[row_index][j];
 							}
 						}
-				//	}
-				//	if (a_cnt == 0) dump();
+					}
 				}
 			}
 		}
@@ -424,12 +416,9 @@ public:
 		auto sm = make_simplex_table(s_cnt, a_cnt);
 		//! 単体表を変形させる
 		if (a_cnt > 0) {	//! 人為変数が存在する場合
-			//cout << "ステップ1\n";
-			//sm.dump();
 			//! 途中で変形不能＝実行不可能
 			if (!sm.solve())
 				return result;
-			//sm.dump();
 			//! 「最大値」の項が負だったとしても実行不可能
 			if (!sm.is_safe())
 				return result;
@@ -437,11 +426,8 @@ public:
 			change_z_param(s_cnt, sm);
 			sm.a_cnt = 0;
 			//! 再度変形させる
-			//cout << "ステップ2\n";
-			//sm.dump();
 			if (!sm.solve())
 				return result;
-			//sm.dump();
 		}
 		else {
 			//! 人為変数が存在しない場合
@@ -449,30 +435,29 @@ public:
 				return result;
 		}
 		//! 結果を出力する
-		if (sm.table[e_cnt][0] >= DBL_MAX)
-			return result;
 		result.z = sm.table[e_cnt][0];
 		for (size_t i = 0; i < e_cnt; ++i) {
 			if (sm.v_idx[i] < v_cnt) {
 				result.x[sm.v_idx[i]] = sm.table[i][0];
 			}
 		}
+		if (result.z >= DBL_MAX)
+			result.z = -DBL_MAX;
 		return result;
 	}
 	//! 最適化を行う(MIP)
-	Result optimize(double lower_bound = -DBL_MAX) const {
+	Result optimize() const {
+		Result result(v_cnt);
+		return optimize(result);
+	}
+	Result optimize(const Result lower_bound) const {
 		//! まずは緩和問題を解く
 		auto pre_result = pre_optimize();
-/*		cout << "緩和問題(" << depth << ")：\n";
-		put();*/
 		cout << "緩和問題(" << depth << ")の解：\n";
 		pre_result.put();
-		//! 緩和問題が解なしだった場合、元の問題も解なしなのは自明
-		if (pre_result.z == -DBL_MAX)
-			return pre_result;
 		//! 限定操作
-		if (pre_result.z <= lower_bound)
-			return pre_result;
+		if (pre_result.z <= lower_bound.z)
+			return lower_bound;
 		//! 緩和問題の解が整数条件を満たす場合はそのまま出力する
 		size_t idx = 0;
 		for (size_t i = 0; i < v_cnt; ++i) {
@@ -487,26 +472,11 @@ public:
 			auto problem1 = *this;
 			problem1.split_branch(idx - 1, pre_result.x[idx - 1], Compare::Less);
 			auto result1 = problem1.optimize(lower_bound);
-			/*cout << "分枝問題1(" << depth << ")：\n";
-			problem1.put();
-			cout << "分枝問題1(" << depth << ")の解：\n";
-			result1.put();*/
-			if(lower_bound < result1.z){
-				lower_bound = result1.z;
-			}
 			//! 分枝操作その2
 			auto problem2 = *this;
 			problem2.split_branch(idx - 1, pre_result.x[idx - 1], Compare::Greater);
-			auto result2 = problem2.optimize(lower_bound);
-			/*cout << "分枝問題2(" << depth << ")：\n";
-			problem2.put();
-			cout << "分枝問題2(" << depth << ")の解：\n";
-			result2.put();*/
-			//! より良い方を出力
-			if (result1.z > result2.z)
-				return result1;
-			else
-				return result2;
+			auto result2 = problem2.optimize(result1);
+			return result2;
 		}
 		depth--;
 		return pre_result;
